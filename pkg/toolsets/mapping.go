@@ -23,6 +23,17 @@ var ToolToToolset = map[string]string{
 	"search_private_providers":     RegistryPrivate,
 	"get_private_provider_details": RegistryPrivate,
 
+	// State inspection tools (resources, outputs, dependency graphs, diffs)
+	"tf_list_workspaces":   StateInspection,
+	"tf_list_resources":    StateInspection,
+	"tf_get_resource":      StateInspection,
+	"tf_search_attributes": StateInspection,
+	"tf_get_outputs":       StateInspection,
+	"tf_dependency_graph":  StateInspection,
+	"tf_diff_state":        StateInspection,
+	"tf_summary":           StateInspection,
+	"tf_refresh_cache":     StateInspection,
+
 	// Terraform tools (TFE/TFC workspaces, runs, variables, etc.)
 	"list_terraform_orgs":                 Terraform,
 	"list_terraform_projects":             Terraform,

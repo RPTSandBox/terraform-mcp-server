@@ -5,6 +5,7 @@ package tools
 
 import (
 	registryTools "github.com/hashicorp/terraform-mcp-server/pkg/tools/registry"
+	stateTools "github.com/hashicorp/terraform-mcp-server/pkg/tools/state"
 	"github.com/hashicorp/terraform-mcp-server/pkg/toolsets"
 	"github.com/mark3labs/mcp-go/server"
 	log "github.com/sirupsen/logrus"
@@ -59,6 +60,52 @@ func RegisterTools(hcServer *server.MCPServer, logger *log.Logger, enabledToolse
 
 	if toolsets.IsToolEnabled("get_policy_details", enabledToolsets) {
 		tool := registryTools.PolicyDetails(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	// State inspection toolset
+	if toolsets.IsToolEnabled("tf_list_workspaces", enabledToolsets) {
+		tool := stateTools.TFListWorkspaces(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	if toolsets.IsToolEnabled("tf_list_resources", enabledToolsets) {
+		tool := stateTools.TFListResources(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	if toolsets.IsToolEnabled("tf_get_resource", enabledToolsets) {
+		tool := stateTools.TFGetResource(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	if toolsets.IsToolEnabled("tf_search_attributes", enabledToolsets) {
+		tool := stateTools.TFSearchAttributes(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	if toolsets.IsToolEnabled("tf_get_outputs", enabledToolsets) {
+		tool := stateTools.TFGetOutputs(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	if toolsets.IsToolEnabled("tf_dependency_graph", enabledToolsets) {
+		tool := stateTools.TFDependencyGraph(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	if toolsets.IsToolEnabled("tf_diff_state", enabledToolsets) {
+		tool := stateTools.TFDiffState(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	if toolsets.IsToolEnabled("tf_summary", enabledToolsets) {
+		tool := stateTools.TFSummary(logger)
+		hcServer.AddTool(tool.Tool, tool.Handler)
+	}
+
+	if toolsets.IsToolEnabled("tf_refresh_cache", enabledToolsets) {
+		tool := stateTools.TFRefreshCache(logger)
 		hcServer.AddTool(tool.Tool, tool.Handler)
 	}
 }

@@ -8,8 +8,9 @@ import "strings"
 const (
 	// Core toolsets
 	Registry        = "registry"
-	RegistryPrivate = "registry-private" // Private registry (TFE/TFC)
-	Terraform       = "terraform"        // TFE/TFC operations
+	RegistryPrivate = "registry-private"   // Private registry (TFE/TFC)
+	Terraform       = "terraform"          // TFE/TFC operations
+	StateInspection = "state-inspection"   // Terraform state inspection tools
 
 	// Special toolsets
 	All     = "all"
@@ -46,6 +47,10 @@ var (
 		Name:        Terraform,
 		Description: "HCP Terraform/TFE operations (workspaces, runs, variables, etc.)",
 	}
+	StateInspectionToolset = Toolset{
+		Name:        StateInspection,
+		Description: "Terraform state inspection (resources, outputs, dependency graphs, diffs)",
+	}
 )
 
 func AvailableToolsets() []Toolset {
@@ -53,6 +58,7 @@ func AvailableToolsets() []Toolset {
 		RegistryToolset,
 		RegistryPrivateToolset,
 		TerraformToolset,
+		StateInspectionToolset,
 	}
 }
 
