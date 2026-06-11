@@ -51,6 +51,9 @@ func buildAddress(res StateResource, inst StateInstance) string {
 	if res.Module != "" {
 		prefix = res.Module + "."
 	}
+	if res.Mode == "data" {
+		prefix = prefix + "data."
+	}
 	base := fmt.Sprintf("%s%s.%s", prefix, res.Type, res.Name)
 	if inst.IndexKey == nil {
 		return base

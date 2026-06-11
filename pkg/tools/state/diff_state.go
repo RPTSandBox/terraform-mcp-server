@@ -177,35 +177,45 @@ func diffAttrs(before, after map[string]interface{}) map[string][2]interface{} {
 // It rejects symlinks, enforces .tfstate extension, and ensures the path
 // is within baseDir to prevent directory traversal.
 func safeDiffPath(rawPath, baseDir string) (string, error) {
-	// Reject if the path itself is a symlink (TOCTOU guard)
-	linfo, err := os.Lstat(rawPath)
-	if err != nil {
-		return "", fmt.Errorf("path %q does not exist or is not accessible: %w", rawPath, err)
-	}
-	if linfo.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("other_state_path must not be a symbolic link")
-	}
-
-	// Get lexically-absolute path without following symlinks
-	abs, err := filepath.Abs(rawPath)
-	if err != nil {
-		return "", fmt.Errorf("resolving path: %w", err)
-	}
-	cleaned := filepath.Clean(abs)
-
-	// Enforce .tfstate extension
-	if !strings.EqualFold(filepath.Ext(cleaned), ".tfstate") {
-		return "", errors.New("other_state_path must have a .tfstate extension")
-	}
-
-	// Enforce containment within baseDir
+	// Resolve baseDir to absolute first.
 	absBase, err := filepath.Abs(baseDir)
 	if err != nil {
 		return "", fmt.Errorf("resolving base directory: %w", err)
 	}
+
+	// For relative paths, root them under baseDir rather than the binary's
+	// working directory.  This makes "previous.tfstate" resolve naturally
+	// inside the allowed directory and prevents CWD from influencing the
+	// containment check.
+	var cleaned string
+	if filepath.IsAbs(rawPath) {
+		cleaned = filepath.Clean(rawPath)
+	} else {
+		cleaned = filepath.Clean(filepath.Join(absBase, rawPath))
+	}
+
+	// Enforce containment within baseDir before any filesystem access.
+	// Use this check first so traversal attempts (../../etc/passwd) are
+	// caught with a clear "outside allowed directory" error rather than an
+	// extension error.
 	rel, err := filepath.Rel(absBase, cleaned)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("other_state_path must be within the allowed directory (%s) — configure TF_STATE_DIFF_BASE_DIR to change this", absBase)
+		return "", fmt.Errorf("other_state_path is outside the allowed directory (%s) — configure TF_STATE_DIFF_BASE_DIR to change this", absBase)
+	}
+
+	// Enforce .tfstate extension before any filesystem access.
+	if !strings.EqualFold(filepath.Ext(cleaned), ".tfstate") {
+		return "", errors.New("other_state_path must have a .tfstate extension")
+	}
+
+	// Now check existence and reject symlinks (TOCTOU guard).
+	// Use cleaned (absolute) path, not rawPath, to avoid re-introducing traversal.
+	linfo, err := os.Lstat(cleaned)
+	if err != nil {
+		return "", errors.New("other_state_path does not exist or is not readable")
+	}
+	if linfo.Mode()&os.ModeSymlink != 0 {
+		return "", errors.New("other_state_path must not be a symbolic link")
 	}
 
 	return cleaned, nil

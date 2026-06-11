@@ -63,10 +63,14 @@ func setAtPath(obj map[string]interface{}, segments []string) {
 }
 
 // applyPatternRedaction recursively redacts attribute values whose keys match pattern.
+// It does not overwrite values already redacted by the manifest mechanism.
 func applyPatternRedaction(attrs map[string]interface{}, pattern *regexp.Regexp) map[string]interface{} {
 	result := make(map[string]interface{}, len(attrs))
 	for k, v := range attrs {
-		if pattern.MatchString(k) {
+		if s, isStr := v.(string); isStr && s == redactedSensitive {
+			// Manifest redaction already fired; preserve its label.
+			result[k] = v
+		} else if pattern.MatchString(k) {
 			result[k] = redactedPattern
 		} else if nested, ok := v.(map[string]interface{}); ok {
 			result[k] = applyPatternRedaction(nested, pattern)

@@ -54,7 +54,7 @@ func tfListResourcesHandler(ctx context.Context, req mcp.CallToolRequest, logger
 	moduleFilter, _ := req.GetArguments()["module_filter"].(string)
 	format, _ := req.GetArguments()["response_format"].(string)
 	if format == "" {
-		format = "json"
+		format = "text"
 	}
 
 	loader := GetLoader()
