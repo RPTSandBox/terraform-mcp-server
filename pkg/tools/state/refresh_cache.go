@@ -43,7 +43,7 @@ func tfRefreshCacheHandler(ctx context.Context, req mcp.CallToolRequest, logger 
 	workspace = strings.TrimSpace(workspace)
 
 	loader := GetLoader()
-	loader.Invalidate(org, workspace)
+	loader.Invalidate(ctx, org, workspace)
 
 	var target string
 	if loader.Backend() == "tfc" {

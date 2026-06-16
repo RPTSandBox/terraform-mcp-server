@@ -30,7 +30,7 @@ A new `state-inspection` toolset was added, enabled via `--toolsets=state-inspec
 
 ### New Package: `pkg/tools/state`
 
-A new package (`package tools`) containing 14 files and 1,626 lines of Go implementing the 9 state inspection tools ported from the community Python server.
+A new package (`package tools`) containing 14 non-test source files (1,790 lines of Go) implementing the 9 state inspection tools ported from the community Python server, plus 4 `_test.go` files (381 lines; see **Tests** below).
 
 **`loader.go`** — `StateLoader` singleton with multi-backend state loading and caching
 
@@ -43,11 +43,13 @@ The `StateLoader` is initialized once (via `sync.Once`) from environment variabl
 | `s3` | `TF_STATE_BUCKET`, `TF_STATE_KEY` | `aws s3 cp s3://… -` subprocess |
 | `tfc` | `TFE_TOKEN`, `TFE_ADDRESS` | `go-tfe` `StateVersions.ReadCurrent` + `StateVersions.Download` |
 
-Cache: per-workspace TTL cache using `sync.RWMutex` + `map[string]*cacheEntry`. Entries expire after 5 minutes. When at capacity (default 500, controlled by `TF_STATE_CACHE_MAX_WORKSPACES`), expired entries are evicted first; if still full, one arbitrary entry is removed.
+Cache: per-workspace TTL cache using `sync.RWMutex` + `map[string]*cacheEntry`. Entries expire after 5 minutes. When at capacity (default 500, controlled by `TF_STATE_CACHE_MAX_WORKSPACES`), expired entries are evicted first; if still full, the oldest entry by load time is removed.
+
+For the `tfc` backend the cache key is partitioned by **session identity** (`client.SessionIdentityFromContext`) so one session cannot read state another session loaded for the same org/workspace. When no session identity is available, the cache is bypassed (the load is forced to refresh) rather than risk serving a shared entry.
 
 State size limit: enforced before JSON parsing, controlled by `TF_STATE_MAX_SIZE_MB` (default 50 MB).
 
-`LoadStateFile()` is a cache-bypassing helper used by `tf_diff_state` to load a comparison state from a local path.
+`LoadStateFileInRoot()` is a cache-bypassing helper used by `tf_diff_state` to load a comparison state from a local path. It opens the file through `os.OpenRoot`, so symlinks that resolve outside the allowed base directory are refused (closing the intermediate-symlink and TOCTOU traversal gaps), enforces the size limit via `fstat` before reading, and rejects non-regular files.
 
 **`types.go`** — data model
 
@@ -67,7 +69,10 @@ Two-layer redaction applied before any tool returns attribute data:
 
 **`diff_state.go`** — `safeDiffPath()` path validation
 
-Mirrors the Python implementation: (1) `os.Lstat` rejects symlinks before any path resolution; (2) `filepath.Abs` + `filepath.Clean` produces a lexically-canonical absolute path without following symlinks; (3) `.tfstate` extension enforced; (4) `filepath.Rel` confirms containment within `TF_STATE_DIFF_BASE_DIR`.
+Two complementary layers guard the `other_state_path` argument:
+
+1. **Lexical** (`safeDiffPath`): `filepath.Abs` + `filepath.Clean` produce a canonical absolute path, the `.tfstate` extension is enforced, and `filepath.Rel` confirms containment within `TF_STATE_DIFF_BASE_DIR`.
+2. **Filesystem** (`LoadStateFileInRoot`): the file is opened through `os.OpenRoot`, which refuses any path that resolves outside the base directory — including via intermediate symlinks — closing the TOCTOU gap that lexical-only checks leave open. Non-regular files are rejected and the size limit is enforced via `fstat` before any read.
 
 **`errors.go`** — `ToolError` / `ToolErrorf` helpers matching the pattern in `pkg/tools/tfe/errors.go`.
 
@@ -89,6 +94,17 @@ All tools follow the same parameter contract as the Python originals. `organizat
 
 `*` required parameter
 
+### Tests
+
+The `state-inspection` package is covered by four `_test.go` files (381 lines):
+
+| File | Coverage |
+|---|---|
+| `diff_path_test.go` | `safeDiffPath` — rejects traversal/escapes; accepts absolute paths inside the base dir |
+| `loader_test.go` | Cache-key session-identity scoping, oldest-entry eviction, and `LoadStateFileInRoot` (valid load, size-limit enforcement, symlink-escape rejection) |
+| `redact_test.go` | Manifest redaction (real cty paths, legacy/nested, list-index), recursive pattern redaction, `deepCopyMap` fail-closed semantics, and input non-mutation |
+| `search_test.go` | `tf_search_attributes` recursion into arrays without false leakage across entries |
+
 ---
 
 ## Environment Variable Reference
@@ -107,6 +123,6 @@ Variables shared across both servers:
 | `TFE_TOKEN` | — | TFE API token (official server) |
 | `TFE_ADDRESS` | `https://app.terraform.io` | TFE instance URL (official server) |
 | `TF_STATE_MAX_SIZE_MB` | `50` | Maximum state file size before rejection |
-| `TF_STATE_CACHE_MAX_WORKSPACES` | `500` | Maximum cached workspaces (LRU eviction) |
+| `TF_STATE_CACHE_MAX_WORKSPACES` | `500` | Maximum cached workspaces (oldest entry by load time is evicted when full) |
 | `TF_STATE_DIFF_BASE_DIR` | `.` (official) / parent of state file (community) | Directory to which `tf_diff_state` paths are confined |
 | `TF_SENSITIVE_ATTR_PATTERN` | — | Regex applied as additional attribute-name blocklist |

@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"regexp"
@@ -75,9 +76,17 @@ func (c *stateCache) put(key string, state *TerraformState) {
 			}
 		}
 		if len(c.entries) >= c.maxSize {
-			for k := range c.entries {
-				delete(c.entries, k)
-				break
+			// Evict the oldest entry by load time (deterministic), rather than an
+			// arbitrary map-iteration-order entry.
+			var oldestKey string
+			var oldest time.Time
+			for k, e := range c.entries {
+				if oldestKey == "" || e.loadedAt.Before(oldest) {
+					oldestKey, oldest = k, e.loadedAt
+				}
+			}
+			if oldestKey != "" {
+				delete(c.entries, oldestKey)
 			}
 		}
 	}
@@ -177,9 +186,11 @@ func (l *StateLoader) DiffBaseDir() string { return l.diffBaseDir }
 // SensitivePattern returns the operator-configured sensitive attribute redaction pattern.
 func (l *StateLoader) SensitivePattern() *regexp.Regexp { return l.sensitivePattern }
 
-func (l *StateLoader) cacheKey(org, workspace string) string {
+func (l *StateLoader) cacheKey(identity, org, workspace string) string {
 	if l.backend == "tfc" {
-		return fmt.Sprintf("tfc:%s/%s", org, workspace)
+		// Partition by session identity so one session cannot read state another session
+		// loaded for the same org/workspace.
+		return fmt.Sprintf("tfc:%s:%s/%s", identity, org, workspace)
 	}
 	return fmt.Sprintf("%s:default", l.backend)
 }
@@ -203,7 +214,16 @@ func (l *StateLoader) Load(ctx context.Context, org, workspace string, forceRefr
 		}
 	}
 
-	key := l.cacheKey(org, workspace)
+	identity := ""
+	if l.backend == "tfc" {
+		identity = client.SessionIdentityFromContext(ctx)
+		if identity == "" {
+			// No session identity to scope the cache to — never serve a shared cache entry.
+			forceRefresh = true
+		}
+	}
+
+	key := l.cacheKey(identity, org, workspace)
 	if !forceRefresh {
 		if cached := l.cache.get(key); cached != nil {
 			return cached, nil
@@ -219,8 +239,13 @@ func (l *StateLoader) Load(ctx context.Context, org, workspace string, forceRefr
 }
 
 // Invalidate removes a workspace's cached state so the next Load fetches fresh data.
-func (l *StateLoader) Invalidate(org, workspace string) {
-	l.cache.invalidate(l.cacheKey(org, workspace))
+// For the tfc backend the entry is scoped to the calling session's identity.
+func (l *StateLoader) Invalidate(ctx context.Context, org, workspace string) {
+	identity := ""
+	if l.backend == "tfc" {
+		identity = client.SessionIdentityFromContext(ctx)
+	}
+	l.cache.invalidate(l.cacheKey(identity, org, workspace))
 }
 
 func (l *StateLoader) fetchState(ctx context.Context, org, workspace string, logger *log.Logger) (*TerraformState, error) {
@@ -229,6 +254,10 @@ func (l *StateLoader) fetchState(ctx context.Context, org, workspace string, log
 
 	switch l.backend {
 	case "local":
+		if info, statErr := os.Stat(l.statePath); statErr == nil && info.Size() > l.maxBytes {
+			return nil, fmt.Errorf("state is %.1f MB which exceeds the %.0f MB limit — increase TF_STATE_MAX_SIZE_MB to override",
+				float64(info.Size())/(1024*1024), float64(l.maxBytes)/(1024*1024))
+		}
 		data, err = os.ReadFile(l.statePath)
 		if err != nil {
 			return nil, fmt.Errorf("reading state file %q — verify TF_STATE_PATH points to a readable .tfstate file: %w", l.statePath, err)
@@ -242,7 +271,7 @@ func (l *StateLoader) fetchState(ctx context.Context, org, workspace string, log
 		if l.prefix != "" {
 			objPath = l.prefix + "/default.tfstate"
 		}
-		data, err = runSubprocess(ctx, "gsutil", "cat", fmt.Sprintf("gs://%s/%s", l.bucket, objPath))
+		data, err = runSubprocess(ctx, l.maxBytes, "gsutil", "cat", fmt.Sprintf("gs://%s/%s", l.bucket, objPath))
 		if err != nil {
 			return nil, fmt.Errorf("reading GCS state gs://%s/%s: %w", l.bucket, objPath, err)
 		}
@@ -254,7 +283,7 @@ func (l *StateLoader) fetchState(ctx context.Context, org, workspace string, log
 		if l.key == "" {
 			return nil, fmt.Errorf("TF_STATE_KEY is required for s3 backend")
 		}
-		data, err = runSubprocess(ctx, "aws", "s3", "cp", fmt.Sprintf("s3://%s/%s", l.bucket, l.key), "-")
+		data, err = runSubprocess(ctx, l.maxBytes, "aws", "s3", "cp", fmt.Sprintf("s3://%s/%s", l.bucket, l.key), "-")
 		if err != nil {
 			return nil, fmt.Errorf("reading S3 state s3://%s/%s: %w", l.bucket, l.key, err)
 		}
@@ -305,34 +334,79 @@ func (l *StateLoader) fetchTFCState(ctx context.Context, org, workspace string, 
 	return data, nil
 }
 
-// LoadStateFile reads and parses a local .tfstate file without using the cache.
-// Used by tf_diff_state to load the comparison state.
-func LoadStateFile(path string, maxBytes int64) (*TerraformState, error) {
-	data, err := os.ReadFile(path)
+// LoadStateFileInRoot reads and parses a .tfstate file located at relPath within baseDir,
+// without using the cache. It opens via os.Root so symlinks that escape baseDir are refused
+// (closing the intermediate-symlink and TOCTOU traversal gaps), enforces the size limit via
+// fstat before reading, and rejects non-regular files. Used by tf_diff_state.
+func LoadStateFileInRoot(baseDir, relPath string, maxBytes int64) (*TerraformState, error) {
+	root, err := os.OpenRoot(baseDir)
 	if err != nil {
-		return nil, fmt.Errorf("reading state file %q: %w", path, err)
+		return nil, fmt.Errorf("opening base directory %q: %w", baseDir, err)
 	}
-	if int64(len(data)) > maxBytes {
+	defer root.Close()
+
+	f, err := root.Open(relPath)
+	if err != nil {
+		return nil, fmt.Errorf("opening state file: file may not exist, be unreadable, or resolve outside the allowed directory")
+	}
+	defer f.Close()
+
+	info, err := f.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stating state file: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("other_state_path must be a regular file")
+	}
+	if info.Size() > maxBytes {
 		return nil, fmt.Errorf("state file %.1f MB exceeds the %.0f MB limit",
-			float64(len(data))/(1024*1024), float64(maxBytes)/(1024*1024))
+			float64(info.Size())/(1024*1024), float64(maxBytes)/(1024*1024))
+	}
+
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("reading state file: %w", err)
 	}
 	var state TerraformState
 	if err := json.Unmarshal(data, &state); err != nil {
-		return nil, fmt.Errorf("parsing state file %q: file may be corrupted or encrypted", path)
+		return nil, fmt.Errorf("parsing state file: file may be corrupted or encrypted")
 	}
 	return &state, nil
 }
 
-func runSubprocess(parentCtx context.Context, name string, args ...string) ([]byte, error) {
+// runSubprocess runs name with args, capturing at most maxBytes of stdout. If the command
+// produces more, it is killed and an error is returned, so an oversized object can never be
+// fully buffered into memory.
+func runSubprocess(parentCtx context.Context, maxBytes int64, name string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(parentCtx, subprocessTimeout)
 	defer cancel()
+
 	cmd := exec.CommandContext(ctx, name, args...)
-	out, err := cmd.Output()
+	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return nil, fmt.Errorf("command %q timed out after %v", name, subprocessTimeout)
-		}
-		return nil, fmt.Errorf("command %q failed: %w", name, err)
+		return nil, fmt.Errorf("command %q: %w", name, err)
 	}
-	return out, nil
+	if err := cmd.Start(); err != nil {
+		return nil, fmt.Errorf("starting %q: %w", name, err)
+	}
+
+	data, readErr := io.ReadAll(io.LimitReader(stdout, maxBytes+1))
+	if int64(len(data)) > maxBytes {
+		cancel() // kill the child before Wait so it cannot block on a full pipe
+		_ = cmd.Wait()
+		return nil, fmt.Errorf("state exceeds the %.0f MB limit — increase TF_STATE_MAX_SIZE_MB to override",
+			float64(maxBytes)/(1024*1024))
+	}
+
+	waitErr := cmd.Wait()
+	if ctx.Err() == context.DeadlineExceeded {
+		return nil, fmt.Errorf("command %q timed out after %v", name, subprocessTimeout)
+	}
+	if waitErr != nil {
+		return nil, fmt.Errorf("command %q failed: %w", name, waitErr)
+	}
+	if readErr != nil {
+		return nil, fmt.Errorf("reading %q output: %w", name, readErr)
+	}
+	return data, nil
 }

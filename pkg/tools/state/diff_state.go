@@ -58,17 +58,18 @@ func tfDiffStateHandler(ctx context.Context, req mcp.CallToolRequest, logger *lo
 	loader := GetLoader()
 
 	// Validate and canonicalize the comparison path
-	safePath, err := safeDiffPath(strings.TrimSpace(rawPath), loader.DiffBaseDir())
+	relPath, absBase, err := safeDiffPath(strings.TrimSpace(rawPath), loader.DiffBaseDir())
 	if err != nil {
 		return ToolError(logger, "invalid other_state_path", err)
 	}
+	safePath := filepath.Join(absBase, relPath)
 
 	// Load both states
 	currentState, err := loader.Load(ctx, org, workspace, false, logger)
 	if err != nil {
 		return ToolError(logger, "loading current Terraform state", err)
 	}
-	otherState, err := LoadStateFile(safePath, loader.maxBytes)
+	otherState, err := LoadStateFileInRoot(absBase, relPath, loader.maxBytes)
 	if err != nil {
 		return ToolError(logger, "loading comparison state file", err)
 	}
@@ -173,20 +174,19 @@ func diffAttrs(before, after map[string]interface{}) map[string][2]interface{} {
 	return changes
 }
 
-// safeDiffPath validates and canonicalizes a path for state diff operations.
-// It rejects symlinks, enforces .tfstate extension, and ensures the path
-// is within baseDir to prevent directory traversal.
-func safeDiffPath(rawPath, baseDir string) (string, error) {
+// safeDiffPath validates a path for state diff operations and returns the path relative to
+// baseDir together with the absolute base directory. It enforces the .tfstate extension and
+// rejects lexical traversal escapes. The actual symlink-safe open is performed by
+// LoadStateFileInRoot via os.Root, which refuses any symlink resolving outside baseDir.
+func safeDiffPath(rawPath, baseDir string) (relPath string, absBase string, err error) {
 	// Resolve baseDir to absolute first.
-	absBase, err := filepath.Abs(baseDir)
+	absBase, err = filepath.Abs(baseDir)
 	if err != nil {
-		return "", fmt.Errorf("resolving base directory: %w", err)
+		return "", "", fmt.Errorf("resolving base directory: %w", err)
 	}
 
-	// For relative paths, root them under baseDir rather than the binary's
-	// working directory.  This makes "previous.tfstate" resolve naturally
-	// inside the allowed directory and prevents CWD from influencing the
-	// containment check.
+	// For relative paths, root them under baseDir rather than the binary's working
+	// directory, so "previous.tfstate" resolves naturally inside the allowed directory.
 	var cleaned string
 	if filepath.IsAbs(rawPath) {
 		cleaned = filepath.Clean(rawPath)
@@ -194,29 +194,17 @@ func safeDiffPath(rawPath, baseDir string) (string, error) {
 		cleaned = filepath.Clean(filepath.Join(absBase, rawPath))
 	}
 
-	// Enforce containment within baseDir before any filesystem access.
-	// Use this check first so traversal attempts (../../etc/passwd) are
-	// caught with a clear "outside allowed directory" error rather than an
-	// extension error.
-	rel, err := filepath.Rel(absBase, cleaned)
-	if err != nil || strings.HasPrefix(rel, "..") {
-		return "", fmt.Errorf("other_state_path is outside the allowed directory (%s) — configure TF_STATE_DIFF_BASE_DIR to change this", absBase)
-	}
-
-	// Enforce .tfstate extension before any filesystem access.
+	// Enforce .tfstate extension before anything else.
 	if !strings.EqualFold(filepath.Ext(cleaned), ".tfstate") {
-		return "", errors.New("other_state_path must have a .tfstate extension")
+		return "", "", errors.New("other_state_path must have a .tfstate extension")
 	}
 
-	// Now check existence and reject symlinks (TOCTOU guard).
-	// Use cleaned (absolute) path, not rawPath, to avoid re-introducing traversal.
-	linfo, err := os.Lstat(cleaned)
-	if err != nil {
-		return "", errors.New("other_state_path does not exist or is not readable")
-	}
-	if linfo.Mode()&os.ModeSymlink != 0 {
-		return "", errors.New("other_state_path must not be a symbolic link")
+	// Enforce lexical containment within baseDir. rel == ".." or a "../" prefix means the
+	// path escapes; a sibling like "..config" is correctly allowed.
+	rel, err := filepath.Rel(absBase, cleaned)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+		return "", "", fmt.Errorf("other_state_path is outside the allowed directory (%s) — configure TF_STATE_DIFF_BASE_DIR to change this", absBase)
 	}
 
-	return cleaned, nil
+	return rel, absBase, nil
 }

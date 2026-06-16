@@ -71,6 +71,17 @@ func DeleteTfeClient(sessionId string) {
 	activeTfeClients.Delete(sessionId)
 }
 
+// SessionIdentityFromContext returns a stable identifier for the credential/session associated
+// with this request, suitable for partitioning per-session caches. Each MCP session has its own
+// auth-validated TFE client, so keying on the session ID prevents one session from reading state
+// another session loaded. Returns "" when there is no active session.
+func SessionIdentityFromContext(ctx context.Context) string {
+	if session := server.ClientSessionFromContext(ctx); session != nil {
+		return session.SessionID()
+	}
+	return ""
+}
+
 // GetTfeClientFromContext extracts TFE client from the MCP context
 func GetTfeClientFromContext(ctx context.Context, logger *log.Logger) (*tfe.Client, error) {
 	session := server.ClientSessionFromContext(ctx)

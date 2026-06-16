@@ -105,23 +105,41 @@ func tfSearchAttributesHandler(ctx context.Context, req mcp.CallToolRequest, log
 func searchAttrs(attrs map[string]interface{}, query string) map[string]interface{} {
 	matches := make(map[string]interface{})
 	for k, v := range attrs {
-		switch val := v.(type) {
-		case string:
-			if strings.Contains(strings.ToLower(val), query) {
-				matches[k] = val
-			}
-		case map[string]interface{}:
-			sub := searchAttrs(val, query)
-			if len(sub) > 0 {
-				matches[k] = sub
-			}
-		default:
-			// Convert to string for search (numbers, booleans, etc.)
-			s := fmt.Sprintf("%v", val)
-			if strings.Contains(strings.ToLower(s), query) {
-				matches[k] = val
-			}
+		if m := searchValue(v, query); m != nil {
+			matches[k] = m
 		}
 	}
 	return matches
+}
+
+// searchValue searches a single attribute value, descending into nested maps and slices.
+// For arrays it returns only the matching elements rather than the whole raw array, so a
+// substring hit cannot leak unrelated (and possibly unredacted) sibling values.
+func searchValue(v interface{}, query string) interface{} {
+	switch val := v.(type) {
+	case string:
+		if strings.Contains(strings.ToLower(val), query) {
+			return val
+		}
+	case map[string]interface{}:
+		if sub := searchAttrs(val, query); len(sub) > 0 {
+			return sub
+		}
+	case []interface{}:
+		var hits []interface{}
+		for _, e := range val {
+			if m := searchValue(e, query); m != nil {
+				hits = append(hits, m)
+			}
+		}
+		if len(hits) > 0 {
+			return hits
+		}
+	default:
+		// Convert to string for search (numbers, booleans, etc.)
+		if strings.Contains(strings.ToLower(fmt.Sprintf("%v", val)), query) {
+			return val
+		}
+	}
+	return nil
 }

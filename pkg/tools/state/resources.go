@@ -9,13 +9,18 @@ import (
 )
 
 // ExtractResources flattens all resource instances from state, applying sensitive-attribute
-// redaction from the manifest and any operator-configured pattern.
+// redaction from the manifest and any operator-configured pattern. If redaction cannot be
+// performed safely for an instance, its attributes are replaced with a redacted placeholder
+// rather than returned raw (fail closed).
 func ExtractResources(state *TerraformState, sensitivePattern *regexp.Regexp) []ExtractedResource {
 	var out []ExtractedResource
 	for _, res := range state.Resources {
 		for _, inst := range res.Instances {
-			attrs := redactSensitiveAttrs(inst.Attributes, inst.SensitiveAttributes)
-			if sensitivePattern != nil {
+			attrs, err := redactSensitiveAttrs(inst.Attributes, inst.SensitiveAttributes)
+			if err != nil {
+				// Fail closed: never return raw attributes if they could not be copied/redacted.
+				attrs = map[string]interface{}{"_redaction_error": "[REDACTED - could not safely process attributes]"}
+			} else if sensitivePattern != nil {
 				attrs = applyPatternRedaction(attrs, sensitivePattern)
 			}
 			module := res.Module
