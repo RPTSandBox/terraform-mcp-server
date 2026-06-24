@@ -25,6 +25,12 @@ const (
 	defaultCacheMaxSize  = 500
 	defaultStateMaxBytes = int64(50 * 1024 * 1024) // 50 MB
 	subprocessTimeout    = 30 * time.Second
+
+	// defaultSensitiveAttrPattern is a conservative key-name denylist applied to
+	// resource attributes (and outputs) whenever TF_SENSITIVE_ATTR_PATTERN is unset.
+	// It is compiled case-insensitively. It catches common secret-bearing key names
+	// that providers frequently fail to flag as sensitive in state.
+	defaultSensitiveAttrPattern = `(password|passwd|secret|token|api[_-]?key|private[_-]?key|access[_-]?key|client[_-]?secret|cert|credential|connection[_-]?string|sas[_-]?token)`
 )
 
 // --- cache ---
@@ -147,11 +153,21 @@ func newStateLoader() *StateLoader {
 		}
 	}
 
-	var sensitivePattern *regexp.Regexp
-	if p := os.Getenv("TF_SENSITIVE_ATTR_PATTERN"); p != "" {
-		if re, err := regexp.Compile("(?i)" + p); err == nil {
-			sensitivePattern = re
-		}
+	// Redaction is on by default. Providers only flag a subset of secret-bearing
+	// attributes as sensitive in state; older/community providers, computed fields,
+	// raw user_data, and connection strings are routinely left unflagged. To avoid
+	// returning those verbatim, always apply a conservative key-name denylist. The
+	// operator can override the pattern with TF_SENSITIVE_ATTR_PATTERN, but cannot
+	// silently disable redaction: an unset var falls back to the default, and an
+	// invalid override falls back to the default (fail closed) rather than nil.
+	pat := os.Getenv("TF_SENSITIVE_ATTR_PATTERN")
+	if pat == "" {
+		pat = defaultSensitiveAttrPattern
+	}
+	sensitivePattern, err := regexp.Compile("(?i)" + pat)
+	if err != nil {
+		log.Errorf("invalid TF_SENSITIVE_ATTR_PATTERN %q: %v — falling back to the built-in default pattern so redaction stays enabled", pat, err)
+		sensitivePattern = regexp.MustCompile("(?i)" + defaultSensitiveAttrPattern)
 	}
 
 	statePath := os.Getenv("TF_STATE_PATH")

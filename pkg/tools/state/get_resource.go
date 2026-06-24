@@ -18,7 +18,9 @@ func TFGetResource(logger *log.Logger) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("tf_get_resource",
 			mcp.WithDescription("Get complete details for a single Terraform resource by its state address, "+
-				"including all attributes (with sensitive values redacted)."),
+				"including all attributes. Values flagged sensitive in state, plus those whose key matches "+
+				"the configured redaction pattern, are redacted; unflagged secrets may still appear, so review "+
+				"output before sharing."),
 			mcp.WithTitleAnnotation("Get Terraform Resource Details"),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithDestructiveHintAnnotation(false),

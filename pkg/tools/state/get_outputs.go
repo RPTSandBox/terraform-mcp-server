@@ -18,8 +18,9 @@ func TFGetOutputs(logger *log.Logger) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("tf_get_outputs",
 			mcp.WithDescription("Get Terraform output values from state. "+
-				"Sensitive output values are redacted. "+
-				"Optionally retrieve a single named output."),
+				"Outputs flagged sensitive in state, plus those whose name or nested keys match the "+
+				"configured redaction pattern, are redacted; unflagged secrets may still appear, so review "+
+				"output before sharing. Optionally retrieve a single named output."),
 			mcp.WithTitleAnnotation("Get Terraform State Outputs"),
 			mcp.WithReadOnlyHintAnnotation(true),
 			mcp.WithDestructiveHintAnnotation(false),
@@ -52,6 +53,8 @@ func tfGetOutputsHandler(ctx context.Context, req mcp.CallToolRequest, logger *l
 		return ToolError(logger, "loading Terraform state", err)
 	}
 
+	pattern := loader.SensitivePattern()
+
 	type outputResult struct {
 		Name      string      `json:"name"`
 		Value     interface{} `json:"value"`
@@ -65,8 +68,16 @@ func tfGetOutputsHandler(ctx context.Context, req mcp.CallToolRequest, logger *l
 			continue
 		}
 		val := out.Value
-		if out.Sensitive {
+		switch {
+		case out.Sensitive:
 			val = "[REDACTED - sensitive output]"
+		case pattern != nil && pattern.MatchString(name):
+			// The output's own name matches the redaction pattern (e.g. "db_password").
+			val = redactedPattern
+		case pattern != nil:
+			// Apply the same key-name pattern pass used for resource attributes so
+			// secrets nested inside a structured output value are also redacted.
+			val = redactValue(out.Value, pattern)
 		}
 		outputs = append(outputs, outputResult{
 			Name:      name,

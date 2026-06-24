@@ -230,9 +230,11 @@ func initLogger(outPath string, level log.Level, format string) (*log.Logger, er
 	return logger, nil
 }
 
-// registerToolsAndResources registers tools and resources with the MCP server
-func registerToolsAndResources(hcServer *server.MCPServer, logger *log.Logger, enabledToolsets []string) {
-	tools.RegisterTools(hcServer, logger, enabledToolsets)
+// registerToolsAndResources registers tools and resources with the MCP server.
+// isNetworkTransport is true for HTTP/SSE transports and false for stdio; it gates the
+// state-inspection toolset (see tools.RegisterTools).
+func registerToolsAndResources(hcServer *server.MCPServer, logger *log.Logger, enabledToolsets []string, isNetworkTransport bool) {
+	tools.RegisterTools(hcServer, logger, enabledToolsets, isNetworkTransport)
 	resources.RegisterResources(hcServer, logger)
 	resources.RegisterResourceTemplates(hcServer, logger)
 }

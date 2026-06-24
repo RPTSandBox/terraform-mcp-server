@@ -72,7 +72,7 @@ func runHTTPServer(logger *log.Logger, host string, port string, endpointPath st
 	opts := []server.ServerOption{server.WithHooks(hooks)}
 
 	hcServer := NewServer(version.Version, logger, enabledToolsets, opts...)
-	registerToolsAndResources(hcServer, logger, enabledToolsets)
+	registerToolsAndResources(hcServer, logger, enabledToolsets, true /* isNetworkTransport */)
 
 	return streamableHTTPServerInit(ctx, hcServer, logger, host, port, endpointPath, heartbeatInterval)
 }
@@ -157,7 +157,7 @@ func runStdioServer(logger *log.Logger, enabledToolsets []string) error {
 	})
 
 	hcServer := NewServer(version.Version, logger, enabledToolsets, server.WithHooks(hooks))
-	registerToolsAndResources(hcServer, logger, enabledToolsets)
+	registerToolsAndResources(hcServer, logger, enabledToolsets, false /* isNetworkTransport: stdio is single-tenant */)
 
 	return serverInit(ctx, hcServer, logger)
 }
