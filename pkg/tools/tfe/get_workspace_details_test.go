@@ -19,17 +19,17 @@ func TestGetWorkspaceDetails(t *testing.T) {
 
 	t.Run("tool creation", func(t *testing.T) {
 		tool := GetWorkspaceDetails(logger)
-		
+
 		assert.Equal(t, "get_workspace_details", tool.Tool.Name)
 		assert.Contains(t, tool.Tool.Description, "detailed information about a specific Terraform workspace")
 		assert.NotNil(t, tool.Handler)
-		
+
 		// Verify it's marked as read-only
 		assert.NotNil(t, tool.Tool.Annotations.ReadOnlyHint)
 		assert.True(t, *tool.Tool.Annotations.ReadOnlyHint)
 		assert.NotNil(t, tool.Tool.Annotations.DestructiveHint)
 		assert.False(t, *tool.Tool.Annotations.DestructiveHint)
-		
+
 		// Check that required parameters are defined
 		assert.Contains(t, tool.Tool.InputSchema.Required, "terraform_org_name")
 		assert.Contains(t, tool.Tool.InputSchema.Required, "workspace_name")
@@ -71,10 +71,10 @@ func TestGetWorkspaceDetails(t *testing.T) {
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
 				request := &MockCallToolRequest{params: tt.params}
-				
+
 				orgName, err1 := request.RequireString("terraform_org_name")
 				workspaceName, err2 := request.RequireString("workspace_name")
-				
+
 				if tt.expectError {
 					switch tt.errorField {
 					case "terraform_org_name":
@@ -127,13 +127,13 @@ func TestGetWorkspaceDetails(t *testing.T) {
 		err = json.Unmarshal(jsonData, &unmarshaled)
 		assert.NoError(t, err)
 		require.Len(t, unmarshaled, 2)
-		
+
 		// Check first variable
 		assert.Equal(t, "var-123", unmarshaled[0].ID)
 		assert.Equal(t, "environment", unmarshaled[0].Key)
 		assert.Equal(t, "production", unmarshaled[0].Value)
 		assert.False(t, unmarshaled[0].Sensitive)
-		
+
 		// Check sensitive variable
 		assert.Equal(t, "var-456", unmarshaled[1].ID)
 		assert.Equal(t, "database_password", unmarshaled[1].Key)

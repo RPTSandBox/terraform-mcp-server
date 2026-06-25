@@ -6,7 +6,6 @@ package tools
 import (
 	"bytes"
 	"context"
-	"fmt"
 
 	"github.com/hashicorp/go-tfe"
 	"github.com/hashicorp/jsonapi"
@@ -17,6 +16,9 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
+
+// READ-ONLY SERVER: CreateWorkspaceVariable and UpdateWorkspaceVariable (write) have been
+// removed entirely. Only the read-only ListWorkspaceVariables remains.
 
 // ListWorkspaceVariables creates a tool to list workspace variables.
 func ListWorkspaceVariables(logger *log.Logger) server.ServerTool {
@@ -71,158 +73,6 @@ func ListWorkspaceVariables(logger *log.Logger) server.ServerTool {
 			return &mcp.CallToolResult{
 				Content: []mcp.Content{
 					mcp.NewTextContent(buf.String()),
-				},
-			}, nil
-		},
-	}
-}
-
-// CreateWorkspaceVariable creates a tool to create a workspace variable.
-func CreateWorkspaceVariable(logger *log.Logger) server.ServerTool {
-	return server.ServerTool{
-		Tool: mcp.NewTool("create_workspace_variable",
-			mcp.WithDescription("Create a new variable in a Terraform workspace."),
-			mcp.WithString("terraform_org_name", mcp.Required(), mcp.Description("Organization name")),
-			mcp.WithString("workspace_name", mcp.Required(), mcp.Description("Workspace name")),
-			mcp.WithString("key", mcp.Required(), mcp.Description("Variable key/name")),
-			mcp.WithString("value", mcp.Required(), mcp.Description("Variable value")),
-			mcp.WithString("description", mcp.Description("Variable description"), mcp.DefaultString("")),
-			mcp.WithString("category",
-				mcp.Description("Variable category: terraform or env"),
-				mcp.Enum("terraform", "env"),
-				mcp.DefaultString("env"),
-			),
-			mcp.WithBoolean("sensitive", mcp.Description("Whether variable is sensitive: true or false"), mcp.DefaultBool(false)),
-			mcp.WithBoolean("hcl", mcp.Description("Whether variable is HCL: true or false"), mcp.DefaultBool(false)),
-		),
-		Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			orgName, err := request.RequireString("terraform_org_name")
-			if err != nil {
-				return ToolError(logger, "missing required input: terraform_org_name", err)
-			}
-			workspaceName, err := request.RequireString("workspace_name")
-			if err != nil {
-				return ToolError(logger, "missing required input: workspace_name", err)
-			}
-			key, err := request.RequireString("key")
-			if err != nil {
-				return ToolError(logger, "missing required input: key", err)
-			}
-			value, err := request.RequireString("value")
-			if err != nil {
-				return ToolError(logger, "missing required input: value", err)
-			}
-
-			category := tfe.CategoryEnv
-			if request.GetString("category", "") == "terraform" {
-				category = tfe.CategoryTerraform
-			}
-
-			sensitive := request.GetBool("sensitive", false)
-			hcl := request.GetBool("hcl", false)
-			description := request.GetString("description", "")
-
-			tfeClient, err := client.GetTfeClientFromContext(ctx, logger)
-			if err != nil {
-				return ToolError(logger, "failed to get Terraform client", err)
-			}
-
-			workspace, err := tfeClient.Workspaces.Read(ctx, orgName, workspaceName)
-			if err != nil {
-				return ToolErrorf(logger, "workspace '%s' not found in org '%s'", workspaceName, orgName)
-			}
-
-			variable, err := tfeClient.Variables.Create(ctx, workspace.ID, tfe.VariableCreateOptions{
-				Key:         &key,
-				Value:       &value,
-				Category:    &category,
-				Sensitive:   &sensitive,
-				HCL:         &hcl,
-				Description: &description,
-			})
-			if err != nil {
-				return ToolErrorf(logger, "failed to create variable '%s': %v", key, err)
-			}
-
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.NewTextContent(fmt.Sprintf("Created variable %s with ID %s", variable.Key, variable.ID)),
-				},
-			}, nil
-		},
-	}
-}
-
-// UpdateWorkspaceVariable creates a tool to update a workspace variable.
-func UpdateWorkspaceVariable(logger *log.Logger) server.ServerTool {
-	return server.ServerTool{
-		Tool: mcp.NewTool("update_workspace_variable",
-			mcp.WithDescription("Update an existing variable in a Terraform workspace."),
-			mcp.WithString("terraform_org_name", mcp.Required(), mcp.Description("Organization name")),
-			mcp.WithString("workspace_name", mcp.Required(), mcp.Description("Workspace name")),
-			mcp.WithString("variable_id", mcp.Required(), mcp.Description("Variable ID to update")),
-			mcp.WithString("key", mcp.Required(), mcp.Description("Variable key/name")),
-			mcp.WithString("value", mcp.Required(), mcp.Description("Variable value")),
-			mcp.WithBoolean("sensitive", mcp.Description("Whether variable is sensitive: true or false"), mcp.DefaultBool(false)),
-			mcp.WithBoolean("hcl", mcp.Description("Whether variable is HCL: true or false"), mcp.DefaultBool(false)),
-			mcp.WithString("description", mcp.Description("Variable description")),
-		),
-		Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			orgName, err := request.RequireString("terraform_org_name")
-			if err != nil {
-				return ToolError(logger, "missing required input: terraform_org_name", err)
-			}
-			workspaceName, err := request.RequireString("workspace_name")
-			if err != nil {
-				return ToolError(logger, "missing required input: workspace_name", err)
-			}
-			variableID, err := request.RequireString("variable_id")
-			if err != nil {
-				return ToolError(logger, "missing required input: variable_id", err)
-			}
-			key, err := request.RequireString("key")
-			if err != nil {
-				return ToolError(logger, "missing required input: key", err)
-			}
-			value, err := request.RequireString("value")
-			if err != nil {
-				return ToolError(logger, "missing required input: value", err)
-			}
-
-			options := tfe.VariableUpdateOptions{
-				Key:   &key,
-				Value: &value,
-			}
-			if sensitiveStr := request.GetString("sensitive", ""); sensitiveStr != "" {
-				sensitive := sensitiveStr == "true"
-				options.Sensitive = &sensitive
-			}
-			if hclStr := request.GetString("hcl", ""); hclStr != "" {
-				hcl := hclStr == "true"
-				options.HCL = &hcl
-			}
-			if description := request.GetString("description", ""); description != "" {
-				options.Description = &description
-			}
-
-			tfeClient, err := client.GetTfeClientFromContext(ctx, logger)
-			if err != nil {
-				return ToolError(logger, "failed to get Terraform client", err)
-			}
-
-			workspace, err := tfeClient.Workspaces.Read(ctx, orgName, workspaceName)
-			if err != nil {
-				return ToolErrorf(logger, "workspace '%s' not found in org '%s'", workspaceName, orgName)
-			}
-
-			variable, err := tfeClient.Variables.Update(ctx, workspace.ID, variableID, options)
-			if err != nil {
-				return ToolErrorf(logger, "failed to update variable '%s': %v", variableID, err)
-			}
-
-			return &mcp.CallToolResult{
-				Content: []mcp.Content{
-					mcp.NewTextContent(fmt.Sprintf("Updated variable %s with ID %s", variable.Key, variable.ID)),
 				},
 			}, nil
 		},

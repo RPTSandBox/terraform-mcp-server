@@ -350,7 +350,6 @@ func TestGetAllValidToolNames(t *testing.T) {
 		"search_policies",
 		"get_policy_details",
 		"list_workspaces",
-		"create_workspace",
 		"search_private_modules",
 		"search_private_providers",
 	}
