@@ -230,9 +230,6 @@ func initLogger(outPath string, level log.Level, format string) (*log.Logger, er
 	return logger, nil
 }
 
-// registerToolsAndResources registers tools and resources with the MCP server.
-// isNetworkTransport is true for HTTP/SSE transports and false for stdio; it gates the
-// state-inspection toolset (see tools.RegisterTools).
 func registerToolsAndResources(hcServer *server.MCPServer, logger *log.Logger, enabledToolsets []string, isNetworkTransport bool) {
 	tools.RegisterTools(hcServer, logger, enabledToolsets, isNetworkTransport)
 	resources.RegisterResources(hcServer, logger)
@@ -273,7 +270,7 @@ func streamableHTTPServerInit(ctx context.Context, hcServer *server.MCPServer, l
 	// Create StreamableHTTP server which implements the new streamable-http transport
 	// This is the modern MCP transport that supports both direct HTTP responses and SSE streams
 	opts := []server.StreamableHTTPOption{
-		server.WithEndpointPath(endpointPath), // Default MCP endpoint path
+		server.WithEndpointPath(endpointPath), 
 		server.WithLogger(logger),
 	}
 

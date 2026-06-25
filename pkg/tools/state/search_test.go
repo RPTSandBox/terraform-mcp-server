@@ -5,8 +5,6 @@ package tools
 
 import "testing"
 
-// TestSearchAttrsRecursesArrays verifies Finding 2: search descends into arrays and returns only
-// the matching sub-elements, never the whole raw array.
 func TestSearchAttrsRecursesArrays(t *testing.T) {
 	attrs := map[string]interface{}{
 		"rules": []interface{}{

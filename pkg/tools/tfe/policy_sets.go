@@ -26,8 +26,6 @@ type MatchingPolicySet struct {
 	Reason      string `json:"reason"`
 }
 
-// READ-ONLY SERVER: AttachPolicySetToWorkspaces (write) has been removed entirely.
-
 // ListWorkspacePolicySets creates a tool to read all policy sets attached to a workspace.
 func ListWorkspacePolicySets(logger *log.Logger) server.ServerTool {
 	return server.ServerTool{

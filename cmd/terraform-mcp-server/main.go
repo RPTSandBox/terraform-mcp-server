@@ -50,11 +50,6 @@ func runHTTPServer(logger *log.Logger, host string, port string, endpointPath st
 		sessionClientInfo.Delete(session.SessionID())
 		client.EndSessionHandler(ctx, session, logger)
 	})
-	// When running multiple sessions of the MCP server (load balancing), calling client.NewSessionHandler
-	// in both BeforeListTools and BeforeCallTool ensures that a session that was not initialized during
-	// registration (e.g., due to being routed to a different instance) will still have its clients created
-	// before any tool calls are made. This provides a safety net to ensure that all sessions have
-	// the necessary clients initialized regardless of how they are routed.
 	hooks.AddBeforeListTools(func(ctx context.Context, id any, message *mcp.ListToolsRequest) {
 		session := server.ClientSessionFromContext(ctx)
 		if session != nil {

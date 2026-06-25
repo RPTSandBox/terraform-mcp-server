@@ -19,8 +19,6 @@ func stateJSON(t *testing.T, doc string) *TerraformState {
 	return &s
 }
 
-// TestManifestRedactionRealCtyPaths verifies Finding 1: sensitive_attributes encoded as the
-// real Terraform v4 cty path-step object form are honored and the value is redacted.
 func TestManifestRedactionRealCtyPaths(t *testing.T) {
 	state := stateJSON(t, `{
 		"version": 4,
@@ -78,8 +76,6 @@ func TestManifestRedactionLegacyAndNested(t *testing.T) {
 	}
 }
 
-// TestManifestRedactionListIndex verifies Finding 2 for the manifest layer: a sensitive value
-// nested inside a list (index step) is redacted.
 func TestManifestRedactionListIndex(t *testing.T) {
 	state := stateJSON(t, `{
 		"version": 4,
@@ -105,8 +101,6 @@ func TestManifestRedactionListIndex(t *testing.T) {
 	}
 }
 
-// TestPatternRedactionRecursesArrays verifies Finding 2 for the pattern layer: keys matching
-// the pattern are redacted even when nested inside arrays.
 func TestPatternRedactionRecursesArrays(t *testing.T) {
 	state := stateJSON(t, `{
 		"version": 4,

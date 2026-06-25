@@ -8,10 +8,7 @@ import (
 	"regexp"
 )
 
-// ExtractResources flattens all resource instances from state, applying sensitive-attribute
-// redaction from the manifest and any operator-configured pattern. If redaction cannot be
-// performed safely for an instance, its attributes are replaced with a redacted placeholder
-// rather than returned raw (fail closed).
+// ExtractResources flattens all resource instances from state, applying sensitive-attribute redaction from the manifest and any operator-configured pattern
 func ExtractResources(state *TerraformState, sensitivePattern *regexp.Regexp) []ExtractedResource {
 	var out []ExtractedResource
 	for _, res := range state.Resources {

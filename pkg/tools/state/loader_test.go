@@ -11,8 +11,7 @@ import (
 	"time"
 )
 
-// TestCacheKeyIdentityScoping verifies Finding 3: the tfc cache key is partitioned by identity,
-// while non-tfc backends ignore identity/org/workspace.
+
 func TestCacheKeyIdentityScoping(t *testing.T) {
 	tfc := &StateLoader{backend: "tfc"}
 	a := tfc.cacheKey("sessionA", "org", "ws")
@@ -27,7 +26,6 @@ func TestCacheKeyIdentityScoping(t *testing.T) {
 	}
 }
 
-// TestCacheEvictsOldest verifies Finding 7: when full, the oldest entry by load time is evicted.
 func TestCacheEvictsOldest(t *testing.T) {
 	c := newStateCache(2, time.Hour)
 	base := time.Now()
@@ -55,7 +53,6 @@ func writeState(t *testing.T, path, body string) {
 	}
 }
 
-// TestLoadStateFileInRootValid verifies a legitimate in-base file loads.
 func TestLoadStateFileInRootValid(t *testing.T) {
 	base := t.TempDir()
 	writeState(t, filepath.Join(base, "previous.tfstate"), `{"version":4,"serial":7}`)
@@ -69,7 +66,6 @@ func TestLoadStateFileInRootValid(t *testing.T) {
 	}
 }
 
-// TestLoadStateFileInRootSizeLimit verifies Finding 4: oversized files are rejected.
 func TestLoadStateFileInRootSizeLimit(t *testing.T) {
 	base := t.TempDir()
 	big := make([]byte, 2048)
@@ -83,8 +79,7 @@ func TestLoadStateFileInRootSizeLimit(t *testing.T) {
 	}
 }
 
-// TestLoadStateFileInRootSymlinkEscape verifies Finding 5: a symlink that resolves outside the
-// base directory is refused by os.Root, even though the path is lexically contained.
+
 func TestLoadStateFileInRootSymlinkEscape(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("symlink semantics differ on Windows")
@@ -93,7 +88,6 @@ func TestLoadStateFileInRootSymlinkEscape(t *testing.T) {
 	outside := t.TempDir()
 	writeState(t, filepath.Join(outside, "secret.tfstate"), `{"version":4,"serial":99}`)
 
-	// base/link -> outside ; lexically "link/secret.tfstate" stays within base.
 	if err := os.Symlink(outside, filepath.Join(base, "link")); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}

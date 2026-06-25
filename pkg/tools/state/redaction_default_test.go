@@ -7,9 +7,6 @@ import (
 	"testing"
 )
 
-// TestDefaultSensitivePatternEnabledWhenUnset verifies Finding 1: with no
-// TF_SENSITIVE_ATTR_PATTERN configured, the loader still ships a non-nil default
-// pattern so unflagged secret-keyed attributes are redacted rather than returned raw.
 func TestDefaultSensitivePatternEnabledWhenUnset(t *testing.T) {
 	t.Setenv("TF_SENSITIVE_ATTR_PATTERN", "")
 	l := newStateLoader()

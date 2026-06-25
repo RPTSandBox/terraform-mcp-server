@@ -30,7 +30,7 @@ type StateResource struct {
 	Instances []StateInstance `json:"instances"`
 }
 
-// StateInstance represents one instance of a resource (from count or for_each).
+// StateInstance represents one instance of a resource.
 type StateInstance struct {
 	IndexKey            interface{}            `json:"index_key"`
 	Attributes          map[string]interface{} `json:"attributes"`

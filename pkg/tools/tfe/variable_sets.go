@@ -17,11 +17,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// READ-ONLY SERVER: the variable-set mutation tools (create_variable_set,
-// create_variable_in_variable_set, delete_variable_in_variable_set,
-// attach_variable_set_to_workspaces, detach_variable_set_from_workspaces) have been removed
-// entirely. Only the read-only ListVariableSets remains.
-
 // ListVariableSets creates a tool to list variable sets.
 func ListVariableSets(logger *log.Logger) server.ServerTool {
 	return server.ServerTool{

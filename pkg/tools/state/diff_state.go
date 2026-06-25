@@ -174,10 +174,7 @@ func diffAttrs(before, after map[string]interface{}) map[string][2]interface{} {
 	return changes
 }
 
-// safeDiffPath validates a path for state diff operations and returns the path relative to
-// baseDir together with the absolute base directory. It enforces the .tfstate extension and
-// rejects lexical traversal escapes. The actual symlink-safe open is performed by
-// LoadStateFileInRoot via os.Root, which refuses any symlink resolving outside baseDir.
+
 func safeDiffPath(rawPath, baseDir string) (relPath string, absBase string, err error) {
 	// Resolve baseDir to absolute first.
 	absBase, err = filepath.Abs(baseDir)
@@ -185,8 +182,6 @@ func safeDiffPath(rawPath, baseDir string) (relPath string, absBase string, err 
 		return "", "", fmt.Errorf("resolving base directory: %w", err)
 	}
 
-	// For relative paths, root them under baseDir rather than the binary's working
-	// directory, so "previous.tfstate" resolves naturally inside the allowed directory.
 	var cleaned string
 	if filepath.IsAbs(rawPath) {
 		cleaned = filepath.Clean(rawPath)
@@ -194,13 +189,10 @@ func safeDiffPath(rawPath, baseDir string) (relPath string, absBase string, err 
 		cleaned = filepath.Clean(filepath.Join(absBase, rawPath))
 	}
 
-	// Enforce .tfstate extension before anything else.
 	if !strings.EqualFold(filepath.Ext(cleaned), ".tfstate") {
 		return "", "", errors.New("other_state_path must have a .tfstate extension")
 	}
 
-	// Enforce lexical containment within baseDir. rel == ".." or a "../" prefix means the
-	// path escapes; a sibling like "..config" is correctly allowed.
 	rel, err := filepath.Rel(absBase, cleaned)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
 		return "", "", fmt.Errorf("other_state_path is outside the allowed directory (%s) — configure TF_STATE_DIFF_BASE_DIR to change this", absBase)

@@ -113,8 +113,6 @@ func searchAttrs(attrs map[string]interface{}, query string) map[string]interfac
 }
 
 // searchValue searches a single attribute value, descending into nested maps and slices.
-// For arrays it returns only the matching elements rather than the whole raw array, so a
-// substring hit cannot leak unrelated (and possibly unredacted) sibling values.
 func searchValue(v interface{}, query string) interface{} {
 	switch val := v.(type) {
 	case string:

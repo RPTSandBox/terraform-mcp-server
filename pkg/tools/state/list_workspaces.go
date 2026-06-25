@@ -17,9 +17,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// TFListWorkspaces returns a tool that lists TFC/TFE workspaces with state-relevant metadata
-// (resource count, lock status, last-updated timestamp). Only functional when TF_STATE_BACKEND=tfc
-// and a valid TFE token is configured.
 func TFListWorkspaces(logger *log.Logger) server.ServerTool {
 	return server.ServerTool{
 		Tool: mcp.NewTool("tf_list_workspaces",

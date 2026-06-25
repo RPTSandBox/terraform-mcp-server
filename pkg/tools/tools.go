@@ -13,10 +13,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// RegisterTools registers the enabled toolsets with the MCP server. isNetworkTransport must be
-// true when the server is reachable over a network transport (HTTP/SSE) and false for a
-// single-tenant stdio launch; it gates the state-inspection toolset, whose non-tfc backends
-// serve one shared operator-configured state to every connected client.
 func RegisterTools(hcServer *server.MCPServer, logger *log.Logger, enabledToolsets []string, isNetworkTransport bool) {
 	// Register the dynamic tools (TFE tools that require authentication)
 	registerDynamicTools(hcServer, logger, enabledToolsets)
@@ -69,14 +65,6 @@ func RegisterTools(hcServer *server.MCPServer, logger *log.Logger, enabledToolse
 		hcServer.AddTool(tool.Tool, tool.Handler)
 	}
 
-	// State inspection toolset.
-	//
-	// On a network transport (HTTP/SSE) the local/s3/gcs backends have no per-caller
-	// authorization: the cache key is "<backend>:default", so every connected client would
-	// read the single operator-configured state. Only the tfc backend is session-scoped.
-	// Refuse to register the state tools in that unsafe configuration unless the operator
-	// explicitly opts in with TF_STATE_ALLOW_SHARED=true. stdio launches are single-tenant
-	// and unaffected.
 	backend := stateTools.GetLoader().Backend()
 	if isNetworkTransport && backend != "tfc" && os.Getenv("TF_STATE_ALLOW_SHARED") != "true" {
 		logger.Warnf("state-inspection toolset disabled: backend %q on a network transport would serve one shared state to all clients with no per-caller authorization; set TF_STATE_ALLOW_SHARED=true to override, or use the tfc backend (session-scoped)", backend)

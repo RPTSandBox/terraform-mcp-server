@@ -14,10 +14,6 @@ const (
 	redactedPattern   = "[REDACTED - pattern match]"
 )
 
-// redactSensitiveAttrs returns a deep copy of attrs with values at sensitive paths replaced.
-// sensitivePaths matches the Terraform state v4 sensitive_attributes format: each element is
-// either a legacy flat string key or a []interface{} cty path whose steps are objects of the
-// form {"type":"get_attr","value":"name"} or {"type":"index","value":N}.
 func redactSensitiveAttrs(attrs map[string]interface{}, sensitivePaths []interface{}) (map[string]interface{}, error) {
 	result, err := deepCopyMap(attrs)
 	if err != nil {
@@ -54,16 +50,13 @@ func pathSteps(raw interface{}) []interface{} {
 	return nil
 }
 
-// normalizeStep maps one cty path step to a string key or an int index. Unknown shapes
-// return a sentinel that cannot match a real attribute key, so redaction fails safe
-// (it never silently treats an unparsed step as "nothing to redact").
 func normalizeStep(seg interface{}) interface{} {
 	switch s := seg.(type) {
 	case string:
 		return s
-	case float64: // JSON numbers decode as float64
+	case float64: 
 		return int(s)
-	case map[string]interface{}: // {"type":"get_attr"|"index","value":...}
+	case map[string]interface{}: 
 		switch v := s["value"].(type) {
 		case string:
 			return v
@@ -140,9 +133,6 @@ func redactValue(v interface{}, pattern *regexp.Regexp) interface{} {
 	}
 }
 
-// deepCopyMap returns a JSON round-trip copy of m. It fails closed: on any marshal/unmarshal
-// error it returns an error rather than the original map, so redaction never mutates cached
-// state and callers can substitute a redacted placeholder.
 func deepCopyMap(m map[string]interface{}) (map[string]interface{}, error) {
 	if m == nil {
 		return nil, nil

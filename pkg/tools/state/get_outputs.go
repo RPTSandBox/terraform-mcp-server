@@ -72,11 +72,9 @@ func tfGetOutputsHandler(ctx context.Context, req mcp.CallToolRequest, logger *l
 		case out.Sensitive:
 			val = "[REDACTED - sensitive output]"
 		case pattern != nil && pattern.MatchString(name):
-			// The output's own name matches the redaction pattern (e.g. "db_password").
 			val = redactedPattern
 		case pattern != nil:
-			// Apply the same key-name pattern pass used for resource attributes so
-			// secrets nested inside a structured output value are also redacted.
+
 			val = redactValue(out.Value, pattern)
 		}
 		outputs = append(outputs, outputResult{

@@ -17,9 +17,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// READ-ONLY SERVER: CreateWorkspaceVariable and UpdateWorkspaceVariable (write) have been
-// removed entirely. Only the read-only ListWorkspaceVariables remains.
-
 // ListWorkspaceVariables creates a tool to list workspace variables.
 func ListWorkspaceVariables(logger *log.Logger) server.ServerTool {
 	return server.ServerTool{

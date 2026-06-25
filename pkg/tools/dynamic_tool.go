@@ -70,9 +70,6 @@ func (r *DynamicToolRegistry) UnregisterSessionWithTFE(sessionID string) {
 	delete(r.sessionsWithTFE, sessionID)
 	r.logger.Info("Session unregistered from TFE client")
 
-	// If no sessions have TFE clients, we could unregister tools
-	// but since MCP doesn't support tool removal, we keep them registered
-	// and rely on runtime checks
 }
 
 // HasSessionWithTFE checks if a specific session has a TFE client
@@ -97,10 +94,6 @@ func isTerraformOperationsEnabled() bool {
 	return strings.ToLower(envVar) == "true"
 }
 
-// writeCapableTools is the denylist of TFE tools that can mutate Terraform Cloud/Enterprise
-// (workspaces, runs, variables, variable/policy sets). This server is READ-ONLY: none of these
-// may ever be registered. createDynamicTFETool hard-refuses any of them, so re-adding a
-// registration block fails loudly at startup rather than silently exposing a write surface.
 var writeCapableTools = map[string]bool{
 	"create_workspace":                    true,
 	"update_workspace":                    true,
@@ -149,10 +142,6 @@ func (r *DynamicToolRegistry) registerTFETools() {
 		r.mcpServer.AddTool(tool.Tool, tool.Handler)
 	}
 
-	// READ-ONLY SERVER: write-capable workspace tools (create_workspace, update_workspace,
-	// delete_workspace_safely) are intentionally NOT registered. The writeCapableTools denylist
-	// + the guard in createDynamicTFETool make re-introduction fail loudly.
-
 	// Registry-private toolset - Private provider tools
 	if toolsets.IsToolEnabled("search_private_providers", r.enabledToolsets) {
 		tool := r.createDynamicTFETool("search_private_providers", tfeTools.SearchPrivateProviders)
@@ -186,9 +175,6 @@ func (r *DynamicToolRegistry) registerTFETools() {
 		tool := r.createDynamicTFETool("list_runs", tfeTools.ListRuns)
 		r.mcpServer.AddTool(tool.Tool, tool.Handler)
 	}
-
-	// READ-ONLY SERVER: create_run (incl. the "safe" speculative variant), action_run, and
-	// create_no_code_workspace create/trigger objects in TFC and are intentionally NOT registered.
 
 	if toolsets.IsToolEnabled("get_run_details", r.enabledToolsets) {
 		tool := r.createDynamicTFETool("get_run_details", tfeTools.GetRunDetails)
@@ -230,10 +216,6 @@ func (r *DynamicToolRegistry) registerTFETools() {
 		r.mcpServer.AddTool(tool.Tool, tool.Handler)
 	}
 
-	// READ-ONLY SERVER: variable-set and policy-set mutation tools (create_variable_set,
-	// create/delete_variable_in_variable_set, attach/detach_variable_set_to/from_workspaces,
-	// attach_policy_set_to_workspaces) are intentionally NOT registered.
-
 	if toolsets.IsToolEnabled("list_workspace_policy_sets", r.enabledToolsets) {
 		tool := r.createDynamicTFETool("list_workspace_policy_sets", tfeTools.ListWorkspacePolicySets)
 		r.mcpServer.AddTool(tool.Tool, tool.Handler)
@@ -244,10 +226,7 @@ func (r *DynamicToolRegistry) registerTFETools() {
 		tool := r.createDynamicTFETool("list_workspace_variables", tfeTools.ListWorkspaceVariables)
 		r.mcpServer.AddTool(tool.Tool, tool.Handler)
 	}
-
-	// READ-ONLY SERVER: create_workspace_variable and update_workspace_variable are
-	// write-capable and intentionally NOT registered.
-
+	
 	if toolsets.IsToolEnabled("get_token_permissions", r.enabledToolsets) {
 		tool := r.createDynamicTFETool("get_token_permissions", tfeTools.GetTokenPermissions)
 		r.mcpServer.AddTool(tool.Tool, tool.Handler)

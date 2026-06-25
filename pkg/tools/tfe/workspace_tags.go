@@ -15,8 +15,6 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// READ-ONLY SERVER: CreateWorkspaceTags (write) has been removed entirely.
-
 // ReadWorkspaceTags creates a tool to read tags from a workspace.
 func ReadWorkspaceTags(logger *log.Logger) server.ServerTool {
 	return server.ServerTool{

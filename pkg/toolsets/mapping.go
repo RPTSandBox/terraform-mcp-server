@@ -34,10 +34,6 @@ var ToolToToolset = map[string]string{
 	"tf_summary":           StateInspection,
 	"tf_refresh_cache":     StateInspection,
 
-	// Terraform tools (TFE/TFC workspaces, runs, variables, etc.) — READ-ONLY ONLY.
-	// Write-capable tools (create/update/delete workspace, create_run, action_run,
-	// create_no_code_workspace, workspace/variable-set/policy-set mutations, create_workspace_tags)
-	// have been removed entirely and are intentionally absent from this mapping.
 	"list_terraform_orgs":        Terraform,
 	"list_terraform_projects":    Terraform,
 	"list_workspaces":            Terraform,

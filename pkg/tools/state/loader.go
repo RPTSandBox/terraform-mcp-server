@@ -25,11 +25,6 @@ const (
 	defaultCacheMaxSize  = 500
 	defaultStateMaxBytes = int64(50 * 1024 * 1024) // 50 MB
 	subprocessTimeout    = 30 * time.Second
-
-	// defaultSensitiveAttrPattern is a conservative key-name denylist applied to
-	// resource attributes (and outputs) whenever TF_SENSITIVE_ATTR_PATTERN is unset.
-	// It is compiled case-insensitively. It catches common secret-bearing key names
-	// that providers frequently fail to flag as sensitive in state.
 	defaultSensitiveAttrPattern = `(password|passwd|secret|token|api[_-]?key|private[_-]?key|access[_-]?key|client[_-]?secret|cert|credential|connection[_-]?string|sas[_-]?token)`
 )
 
@@ -82,8 +77,6 @@ func (c *stateCache) put(key string, state *TerraformState) {
 			}
 		}
 		if len(c.entries) >= c.maxSize {
-			// Evict the oldest entry by load time (deterministic), rather than an
-			// arbitrary map-iteration-order entry.
 			var oldestKey string
 			var oldest time.Time
 			for k, e := range c.entries {
@@ -104,8 +97,6 @@ func (c *stateCache) invalidate(key string) {
 	delete(c.entries, key)
 	c.mu.Unlock()
 }
-
-// --- StateLoader ---
 
 // StateLoader loads Terraform state from a configured backend with per-workspace TTL caching.
 type StateLoader struct {
@@ -153,13 +144,6 @@ func newStateLoader() *StateLoader {
 		}
 	}
 
-	// Redaction is on by default. Providers only flag a subset of secret-bearing
-	// attributes as sensitive in state; older/community providers, computed fields,
-	// raw user_data, and connection strings are routinely left unflagged. To avoid
-	// returning those verbatim, always apply a conservative key-name denylist. The
-	// operator can override the pattern with TF_SENSITIVE_ATTR_PATTERN, but cannot
-	// silently disable redaction: an unset var falls back to the default, and an
-	// invalid override falls back to the default (fail closed) rather than nil.
 	pat := os.Getenv("TF_SENSITIVE_ATTR_PATTERN")
 	if pat == "" {
 		pat = defaultSensitiveAttrPattern
@@ -204,16 +188,11 @@ func (l *StateLoader) SensitivePattern() *regexp.Regexp { return l.sensitivePatt
 
 func (l *StateLoader) cacheKey(identity, org, workspace string) string {
 	if l.backend == "tfc" {
-		// Partition by session identity so one session cannot read state another session
-		// loaded for the same org/workspace.
 		return fmt.Sprintf("tfc:%s:%s/%s", identity, org, workspace)
 	}
 	return fmt.Sprintf("%s:default", l.backend)
 }
 
-// Load returns the Terraform state for the given workspace, using the cache when fresh.
-// For tfc backend org and workspace are required (or resolved from TF_CLOUD_ORG env).
-// For all other backends org and workspace are ignored; pass empty strings.
 func (l *StateLoader) Load(ctx context.Context, org, workspace string, forceRefresh bool, logger *log.Logger) (*TerraformState, error) {
 	if l.backend == "tfc" {
 		if org == "" {
@@ -234,7 +213,6 @@ func (l *StateLoader) Load(ctx context.Context, org, workspace string, forceRefr
 	if l.backend == "tfc" {
 		identity = client.SessionIdentityFromContext(ctx)
 		if identity == "" {
-			// No session identity to scope the cache to — never serve a shared cache entry.
 			forceRefresh = true
 		}
 	}
@@ -254,8 +232,6 @@ func (l *StateLoader) Load(ctx context.Context, org, workspace string, forceRefr
 	return state, nil
 }
 
-// Invalidate removes a workspace's cached state so the next Load fetches fresh data.
-// For the tfc backend the entry is scoped to the calling session's identity.
 func (l *StateLoader) Invalidate(ctx context.Context, org, workspace string) {
 	identity := ""
 	if l.backend == "tfc" {
@@ -350,10 +326,6 @@ func (l *StateLoader) fetchTFCState(ctx context.Context, org, workspace string, 
 	return data, nil
 }
 
-// LoadStateFileInRoot reads and parses a .tfstate file located at relPath within baseDir,
-// without using the cache. It opens via os.Root so symlinks that escape baseDir are refused
-// (closing the intermediate-symlink and TOCTOU traversal gaps), enforces the size limit via
-// fstat before reading, and rejects non-regular files. Used by tf_diff_state.
 func LoadStateFileInRoot(baseDir, relPath string, maxBytes int64) (*TerraformState, error) {
 	root, err := os.OpenRoot(baseDir)
 	if err != nil {
@@ -390,9 +362,6 @@ func LoadStateFileInRoot(baseDir, relPath string, maxBytes int64) (*TerraformSta
 	return &state, nil
 }
 
-// runSubprocess runs name with args, capturing at most maxBytes of stdout. If the command
-// produces more, it is killed and an error is returned, so an oversized object can never be
-// fully buffered into memory.
 func runSubprocess(parentCtx context.Context, maxBytes int64, name string, args ...string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(parentCtx, subprocessTimeout)
 	defer cancel()
