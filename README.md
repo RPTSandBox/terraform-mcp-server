@@ -205,7 +205,80 @@ Optionally, you can add a similar example (i.e. without the mcp key) to a file c
 [<img alt="Install in VS Code (docker)" src="https://img.shields.io/badge/VS_Code-VS_Code?style=flat-square&label=Install%20Terraform%20MCP&color=0098FF">](https://vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%7B%22name%22%3A%22terraform%22%2C%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22hashicorp%2Fterraform-mcp-server%22%5D%7D)
 [<img alt="Install in VS Code Insiders (docker)" src="https://img.shields.io/badge/VS_Code_Insiders-VS_Code_Insiders?style=flat-square&label=Install%20Terraform%20MCP&color=24bfa5">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%7B%22name%22%3A%22terraform%22%2C%22command%22%3A%22docker%22%2C%22args%22%3A%5B%22run%22%2C%22-i%22%2C%22--rm%22%2C%22hashicorp%2Fterraform-mcp-server%22%5D%7D)
 
-### Usage with Cursor
+## Building and Installing in Cursor (Forked MCP version)
+
+This section covers building the server binary from source and registering it as a local (stdio) MCP server in [Cursor](https://cursor.com/docs/mcp).
+
+### 1. Build the binary
+
+**Prerequisites:** Go (see [.go-version](./.go-version) / [go.mod](./go.mod) for the required version).
+
+From the repository root:
+
+```bash
+make build
+```
+
+This produces a statically linked binary at `bin/terraform-mcp-server`. Note the absolute path — you'll need it for the Cursor config:
+
+```bash
+echo "$(pwd)/bin/terraform-mcp-server"
+```
+
+> Alternatively, build directly with the Go toolchain:
+> ```bash
+> CGO_ENABLED=0 go build -o bin/terraform-mcp-server ./cmd/terraform-mcp-server
+> ```
+> Or install to `$GOBIN` (typically `~/go/bin`):
+> ```bash
+> go install github.com/hashicorp/terraform-mcp-server/cmd/terraform-mcp-server@latest
+> ```
+
+### 2. Configure Cursor
+
+Cursor reads MCP server definitions from one of:
+
+- **Global** (all projects): `~/.cursor/mcp.json`
+- **Project-scoped**: `.cursor/mcp.json` in the project root
+
+Create/edit the file and add a `terraform` entry under `mcpServers`. Point `command` at the binary you built and pass `stdio` as the transport:
+
+```json
+{
+  "mcpServers": {
+    "terraform": {
+      "command": "/absolute/path/to/terraform-mcp-server/bin/terraform-mcp-server",
+      "args": ["stdio", "--toolsets=terraform,state-inspection"],
+      "env": {
+        "TFE_ADDRESS": "https://app.terraform.io",
+        "TF_STATE_BACKEND": "tfc",
+        "TFE_TOKEN": "${env:TFE_TOKEN}"
+      }
+    }
+  }
+}
+```
+
+Notes:
+
+- **`args`** — `stdio` selects the stdio transport that Cursor manages. `--toolsets` is optional; omit it to fall back to the default toolset, or scope it (e.g. `terraform,state-inspection`) to control which tools are exposed. See [Tool Filtering](#tool-filtering) above.
+- **`env`** — set the variables the server needs. For HCP Terraform / Terraform Enterprise features and state inspection, provide `TFE_TOKEN` (and `TFE_ADDRESS` if you're not using the default SaaS endpoint). Registry-only usage needs no token.
+- **Do not hard-code your token.** Cursor supports interpolation — `${env:TFE_TOKEN}` reads it from your shell environment so the secret never lives in the JSON file. You can also use `${workspaceFolder}` and `${userHome}` in paths. (STDIO servers additionally support an `envFile` key pointing at a `.env` file.)
+
+### 3. Enable and verify
+
+1. Open Cursor's **Settings → MCP** (or the **Customize** panel in the sidebar) and confirm the `terraform` server is listed; toggle it on if needed.
+2. Cursor launches the binary and lists its tools once it connects.
+3. If it fails to connect, check **MCP Logs** in the Output panel (`Cmd+Shift+U`) for startup or authentication errors.
+
+> **Tip:** Run the binary manually to sanity-check the build before wiring it into Cursor:
+> ```bash
+> TFE_TOKEN=<token> ./bin/terraform-mcp-server stdio
+> ```
+> It should start and wait on stdin without errors.
+
+
+## Usage with Cursor (Official Version)
 
 Add this to your Cursor config (`~/.cursor/mcp.json`) or via Settings → Cursor Settings → MCP:
 
@@ -709,3 +782,4 @@ For security issues, please contact security@hashicorp.com or follow our [securi
 For bug reports and feature requests, please open an issue on GitHub.
 
 For general questions and discussions, open a GitHub Discussion.
+
